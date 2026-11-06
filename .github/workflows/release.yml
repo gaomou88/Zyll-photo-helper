@@ -1,12 +1,18 @@
 name: Release
 
-# Push a tag like v1.0.0 to build a signed APK and attach it to a GitHub Release.
+# Push a tag like v1.0.0, or run this workflow by hand with a tag, to build a
+# signed APK and attach it to a GitHub Release.
 # Needs these repository secrets:
 #   HELPER_KEYSTORE_BASE64   base64 of your release keystore (.jks)
 #   HELPER_STORE_PASSWORD, HELPER_KEY_ALIAS, HELPER_KEY_PASSWORD
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to create, e.g. v1.0.0"
+        required: true
 
 permissions:
   contents: write
@@ -21,6 +27,11 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Pick version tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: echo "TAG=${INPUT_TAG:-$GITHUB_REF_NAME}" >> "$GITHUB_ENV"
 
       - name: Restore keystore
         env:
@@ -37,7 +48,7 @@ jobs:
           HELPER_KEY_PASSWORD: ${{ secrets.HELPER_KEY_PASSWORD }}
         run: |
           ./gradlew :app:testDebugUnitTest :app:assembleRelease
-          APK=zyll-photo-helper-${GITHUB_REF_NAME}.apk
+          APK=zyll-photo-helper-${TAG}.apk
           cp app/build/outputs/apk/release/app-release.apk "$APK"
           sha256sum "$APK" > "$APK.sha256"
           echo "APK=$APK" >> "$GITHUB_ENV"
@@ -45,4 +56,4 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --title "$GITHUB_REF_NAME" --notes "Signed release. Check the SHA-256 before installing."
+        run: gh release create "$TAG" "$APK" "$APK.sha256" --target "$GITHUB_SHA" --title "$TAG" --notes "Signed release. Check the SHA-256 before installing."
